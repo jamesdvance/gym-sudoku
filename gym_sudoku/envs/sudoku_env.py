@@ -92,12 +92,23 @@ class SudokuEnv(gym.Env):
 
 	# Make a random grid and store it in self.base
 	def __init__(self):
-		# The box space is continuous. This don't apply to a sudoku grid, but there is no other choices
-		self.observation_space = spaces.Box(low=1, high=9, shape=(9, 9))
-		#self.action_space = spaces.Tuple((spaces.Discrete(9), spaces.Discrete(9), spaces.Discrete(9)))
-		self.action_space = spaces.Discrete(9*9*9)
+		#self.action_space = spaces.MultiDiscrete([4,9]), np.array())
+
+		# self.observation_space = spaces.Dict({
+		# 	"0":spaces.Box(low=1, high=4, shape=(4,)),
+		# 	"1":spaces.Box(low=1, high=9, shape=(9, 9))
+		# })
+		## Discrete acton space 
+		# self.action_space = spaces.Discrete(9*9*9)
+		self.action_space = spaces.MultiDiscrete([81, 9])
+		self.int_to_coordinates = dict(zip(list(range(81)),
+			[(i,j) for i in list(range(9)) for j in list(range(9))]))
+		# action_choices = [(i,j,k) for i in range(9) for j in range(9) for k in range(9)]
+		# self.action_to_choice = dict(zip(list(range(9**3)), action_choices))
 		action_choices = [(i,j,k) for i in range(9) for j in range(9) for k in range(9)]
 		self.action_to_choice = dict(zip(list(range(9**3)), action_choices))
+		# Obs space
+		self.observation_space = spaces.Box(low=1, high=9, shape=(9, 9))
 		# Get a random solution for an empty grid
 		self.grid = []
 		self.base = getSolutions(np.zeros(shape=(9,9)))[0]
@@ -131,10 +142,42 @@ class SudokuEnv(gym.Env):
 	# 	- a copy of the grid to prevent alteration from the user
 	# 	- a reward: - negative if action leads to an error
 	#	            - positive if action is correct or grid is resolved
-	def step(self, action):
+	def step_discrete(self, action):
+		"Step function for discrete action / Box obs"
 		oldGrid = np.copy(self.grid)
 
 		action_choice = self.action_to_choice[action]
+		self.last_action = action_choice
+
+		# The user can't replace a value that was already set
+		if self.grid[action_choice[0], action_choice[1]] != 0:
+			return (
+				np.copy(self.grid), 
+				-1, 
+				False, 
+				#False, 
+				{}
+			)
+		
+		# We add one to the action because the action space is from 0-8 and we want a value in 1-9
+		self.grid[action_choice[0], action_choice[1]] = action_choice[2]+1
+
+		stats = checkSolution(self.grid)
+		# If grid is complet or correct, return positive reward
+		if stats == resolved:
+			return np.copy(self.grid), 1, True,   {}
+		elif stats == unfinished:
+			return np.copy(self.grid), 1, False,  {}
+		if stats == error:
+			# If move is wrong, return to old state, and return negative reward
+			self.grid = oldGrid
+			return np.copy(self.grid), -1, False,  {}
+		
+	def step(self, action):
+		" Step function for multidiscrete input / dict rewards"
+		oldGrid = np.copy(self.grid)
+
+		action_choice = self.int_to_coordinates[action[0]] + (action[1],)
 		self.last_action = action_choice
 
 		# The user can't replace a value that was already set
@@ -189,21 +232,3 @@ class SudokuEnv(gym.Env):
 				sys.stdout.write('\n')
 		sys.stdout.write('\n\n')
 		sys.stdout.flush()
-
-
-# env = SudokuEnv()
-# env._reset()
-# print env.grid
-
-# grid = np.array(
-# [[0,0,0,4,0,9,0,0,1],
-# [0,0,4,0,3,0,0,2,0],
-# [0,7,2,0,5,1,0,0,6],
-# [4,2,1,0,0,5,6,0,0],
-# [8,0,0,0,0,2,0,0,0],
-# [3,0,0,9,0,0,0,0,0],
-# [0,1,0,5,7,4,0,0,0],
-# [5,0,6,0,0,3,0,0,7],
-# [0,0,3,0,9,0,0,1,0]])
-#
-# print getSolutions(grid)
